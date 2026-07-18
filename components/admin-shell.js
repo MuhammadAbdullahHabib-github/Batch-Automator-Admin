@@ -1,13 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LogOut, Settings, UserCog, Users } from "lucide-react";
+import { Bell, CheckCircle2, KeyRound, LogOut, Settings, UserCog, Users, XCircle } from "lucide-react";
+import { callRpc } from "@/lib/api";
+import { supabase } from "@/lib/supabase-client";
 import { useAdminAuth } from "@/lib/admin-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Sidebar,
   SidebarContent,
@@ -35,6 +44,40 @@ const NAV_ITEMS = [
 export function AdminShell({ children }) {
   const { session, me, role, loading, signOut } = useAdminAuth();
   const pathname = usePathname();
+  const [notifications, setNotifications] = useState([]);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+
+  async function loadNotifications() {
+    try {
+      const rows = await callRpc("list_my_notifications");
+      setNotifications(rows ?? []);
+    } catch {
+      // Notifications are non-critical — a failed fetch just leaves the bell as-is.
+    }
+  }
+
+  // Polls the same way the trial countdown ticks elsewhere in the app (setInterval,
+  // no realtime subscription) — simplest option that stays on the free tier.
+  useEffect(() => {
+    if (!session) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadNotifications();
+    const id = setInterval(loadNotifications, 60_000);
+    return () => clearInterval(id);
+  }, [session]);
+
+  async function handleNotifOpenChange(open) {
+    setNotifOpen(open);
+    if (open) {
+      try {
+        await callRpc("mark_all_notifications_read");
+        await loadNotifications();
+      } catch {
+        // ignore — worst case the badge stays until the next poll
+      }
+    }
+  }
 
   if (loading) return null;
 
@@ -43,16 +86,32 @@ export function AdminShell({ children }) {
   }
 
   const navItems = NAV_ITEMS.filter((item) => !item.ownerOnly || role === "owner");
+  const unreadCount = notifications.filter((n) => !n.read_at).length;
 
   return (
     <SidebarProvider>
       <Sidebar>
         <SidebarHeader>
-          <div className="px-2 py-1.5">
-            <div className="text-sm font-semibold">Batch Automator</div>
-            <div className="text-xs text-muted-foreground">
-              {me?.display_name || me?.email} · {role === "owner" ? "Owner" : "Reseller"}
+          <div className="flex items-center justify-between gap-2 px-2 py-1.5">
+            <div>
+              <div className="text-sm font-semibold">Batch Automator</div>
+              <div className="text-xs text-muted-foreground">
+                {me?.display_name || me?.email} · {role === "owner" ? "Owner" : "Reseller"}
+              </div>
             </div>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="relative shrink-0"
+              onClick={() => handleNotifOpenChange(true)}
+            >
+              <Bell className="size-4" />
+              {unreadCount > 0 ? (
+                <span className="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-destructive text-[10px] font-medium text-destructive-foreground">
+                  {unreadCount > 9 ? "9+" : unreadCount}
+                </span>
+              ) : null}
+            </Button>
           </div>
         </SidebarHeader>
         <SidebarContent>
@@ -72,10 +131,16 @@ export function AdminShell({ children }) {
           </SidebarGroup>
         </SidebarContent>
         <SidebarFooter>
-          <Button variant="outline" size="sm" onClick={signOut}>
-            <LogOut className="size-3.5" />
-            Sign out
-          </Button>
+          <div className="flex flex-col gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setChangePasswordOpen(true)}>
+              <KeyRound className="size-3.5" />
+              Change password
+            </Button>
+            <Button variant="outline" size="sm" onClick={signOut}>
+              <LogOut className="size-3.5" />
+              Sign out
+            </Button>
+          </div>
         </SidebarFooter>
       </Sidebar>
       <SidebarInset>
@@ -85,8 +150,129 @@ export function AdminShell({ children }) {
         </div>
         {children}
       </SidebarInset>
+
+      <NotificationsDialog
+        open={notifOpen}
+        onOpenChange={handleNotifOpenChange}
+        notifications={notifications}
+      />
+      <ChangePasswordDialog open={changePasswordOpen} onOpenChange={setChangePasswordOpen} />
     </SidebarProvider>
   );
+}
+
+function NotificationsDialog({ open, onOpenChange, notifications }) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Notifications</DialogTitle>
+          <DialogDescription>Updates on your clients&apos; paid-access requests.</DialogDescription>
+        </DialogHeader>
+        <div className="flex max-h-80 flex-col gap-2 overflow-y-auto">
+          {notifications.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No notifications yet.</p>
+          ) : (
+            notifications.map((n) => (
+              <div key={n.id} className="flex items-start gap-2 rounded-md border p-2 text-sm">
+                {n.type === "approved" ? (
+                  <CheckCircle2 className="mt-0.5 size-4 shrink-0" style={{ color: "#0ca30c" }} />
+                ) : (
+                  <XCircle className="mt-0.5 size-4 shrink-0" style={{ color: "#ec835a" }} />
+                )}
+                <div>
+                  <div className="font-medium break-all">
+                    {n.type === "approved" ? "Approved" : "Declined"}: {n.profile_email}
+                  </div>
+                  <div className="text-xs text-muted-foreground">{formatDateTime(n.created_at)}</div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ChangePasswordDialog({ open, onOpenChange }) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-sm">
+        {open ? <ChangePasswordForm onDone={() => onOpenChange(false)} /> : null}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ChangePasswordForm({ onDone }) {
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    setError("");
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters.");
+      return;
+    }
+    if (password !== confirm) {
+      setError("Passwords don't match.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const { error: updateError } = await supabase.auth.updateUser({ password });
+      if (updateError) throw new Error(updateError.message);
+      onDone();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>Change password</DialogTitle>
+        <DialogDescription>Set a new password for your account.</DialogDescription>
+      </DialogHeader>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-2">
+        <Input
+          type="password"
+          required
+          minLength={8}
+          placeholder="New password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+        />
+        <Input
+          type="password"
+          required
+          placeholder="Confirm new password"
+          value={confirm}
+          onChange={(event) => setConfirm(event.target.value)}
+        />
+        {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        <Button type="submit" disabled={submitting}>
+          Update password
+        </Button>
+      </form>
+    </>
+  );
+}
+
+function formatDateTime(iso) {
+  return new Date(iso).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 function SignInGate() {

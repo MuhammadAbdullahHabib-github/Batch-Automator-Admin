@@ -7,8 +7,10 @@ import {
   Clock,
   Hourglass,
   MessageCircle,
+  Rocket,
   Sparkles,
   Trash2,
+  TrendingUp,
   Users,
   Wallet,
 } from "lucide-react";
@@ -90,6 +92,8 @@ export default function ClientsPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [resellerFilter, setResellerFilter] = useState("all");
   const [selectedEmail, setSelectedEmail] = useState(null);
+  const [selected, setSelected] = useState(new Set());
+  const [now] = useState(() => Date.now());
 
   async function loadProfiles() {
     setLoading(true);
@@ -172,6 +176,59 @@ export default function ClientsPage() {
     }
   }
 
+  function toggleSelect(email) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(email)) next.delete(email);
+      else next.add(email);
+      return next;
+    });
+  }
+
+  async function handleBulkTrial(durationMinutes) {
+    const emails = Array.from(selected);
+    if (emails.length === 0) return;
+    try {
+      await callRpc("admin_bulk_start_trial", { p_emails: emails, p_duration_minutes: durationMinutes });
+      setStatus(
+        durationMinutes
+          ? `Started trial for ${emails.length} client(s).`
+          : `Revoked trial for ${emails.length} client(s).`
+      );
+      setSelected(new Set());
+      await loadProfiles();
+    } catch (err) {
+      setStatus(`Bulk trial update failed: ${err.message}`);
+    }
+  }
+
+  async function handleBulkSetPaid(paid) {
+    const emails = Array.from(selected);
+    if (emails.length === 0) return;
+    try {
+      await callRpc("admin_bulk_set_paid", { p_emails: emails, p_paid: paid });
+      setStatus(`Marked ${emails.length} client(s) as ${paid ? "paid" : "unpaid"}.`);
+      setSelected(new Set());
+      await loadProfiles();
+    } catch (err) {
+      setStatus(`Bulk paid update failed: ${err.message}`);
+    }
+  }
+
+  async function handleBulkDelete() {
+    const emails = Array.from(selected);
+    if (emails.length === 0) return;
+    if (!window.confirm(`Delete ${emails.length} selected client(s)? This cannot be undone.`)) return;
+    try {
+      await callRpc("admin_bulk_delete_profiles", { p_emails: emails });
+      setStatus(`Deleted ${emails.length} client(s).`);
+      setSelected(new Set());
+      await loadProfiles();
+    } catch (err) {
+      setStatus(`Bulk delete failed: ${err.message}`);
+    }
+  }
+
   const withSegment = useMemo(
     () => profiles.map((profile) => ({ ...profile, segmentKey: getSegmentKey(profile) })),
     [profiles]
@@ -183,6 +240,17 @@ export default function ClientsPage() {
     for (const profile of withSegment) base[profile.segmentKey] += 1;
     return base;
   }, [withSegment]);
+
+  const metrics = useMemo(() => {
+    const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
+    const trialsStarted7d = withSegment.filter(
+      (profile) => profile.trial_started_at && new Date(profile.trial_started_at).getTime() >= sevenDaysAgo
+    ).length;
+    const hadTrialCount = counts.converted + counts.trial_active + counts.trial_expired;
+    const conversionRate = hadTrialCount > 0 ? Math.round((counts.converted / hadTrialCount) * 100) : null;
+    const totalPaid = counts.direct + counts.converted;
+    return { trialsStarted7d, conversionRate, totalPaid };
+  }, [withSegment, counts, now]);
 
   const resellerOptions = useMemo(() => {
     const map = new Map();
@@ -208,6 +276,18 @@ export default function ClientsPage() {
     });
   }, [withSegment, statusFilter, resellerFilter, query]);
 
+  function toggleSelectAllVisible() {
+    setSelected((prev) => {
+      const allSelected = filtered.length > 0 && filtered.every((profile) => prev.has(profile.email));
+      const next = new Set(prev);
+      for (const profile of filtered) {
+        if (allSelected) next.delete(profile.email);
+        else next.add(profile.email);
+      }
+      return next;
+    });
+  }
+
   const selectedProfile = withSegment.find((profile) => profile.email === selectedEmail) ?? null;
 
   return (
@@ -229,7 +309,17 @@ export default function ClientsPage() {
 
         <AddForm onSave={handleAddOrUpdate} />
 
-        <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
+        <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <MetricCard label="Trials started (7d)" value={metrics.trialsStarted7d} icon={Rocket} />
+          <MetricCard
+            label="Conversion rate"
+            value={metrics.conversionRate === null ? "—" : `${metrics.conversionRate}%`}
+            icon={TrendingUp}
+          />
+          <MetricCard label="Total paid clients" value={metrics.totalPaid} icon={Wallet} />
+        </div>
+
+        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
           {FILTER_ORDER.map((key) => (
             <StatTile
               key={key}
@@ -272,10 +362,56 @@ export default function ClientsPage() {
           ) : null}
         </div>
 
+        {selected.size > 0 ? (
+          <Card className="mt-4 py-3">
+            <CardContent className="flex flex-wrap items-center gap-2 px-4">
+              <span className="text-sm font-medium">{selected.size} selected</span>
+              <div className="ml-auto flex flex-wrap items-center gap-2">
+                {TRIAL_PRESETS.map((preset) => (
+                  <Button
+                    key={preset.minutes}
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => handleBulkTrial(preset.minutes)}
+                  >
+                    {preset.label}
+                  </Button>
+                ))}
+                <Button variant="outline" size="sm" onClick={() => handleBulkTrial(null)}>
+                  Revoke trial
+                </Button>
+                {role === "owner" ? (
+                  <>
+                    <Button variant="outline" size="sm" onClick={() => handleBulkSetPaid(true)}>
+                      Mark paid
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => handleBulkSetPaid(false)}>
+                      Mark unpaid
+                    </Button>
+                    <Button variant="destructive" size="sm" onClick={handleBulkDelete}>
+                      <Trash2 className="size-3.5" />
+                      Delete
+                    </Button>
+                  </>
+                ) : null}
+                <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>
+                  Clear
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
+
         <Card className="mt-4 py-0">
           <Table>
             <TableHeader className="[&_th]:h-11 [&_th]:text-xs [&_th]:font-medium [&_th]:tracking-wide [&_th]:text-muted-foreground [&_th]:uppercase">
               <TableRow>
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={filtered.length > 0 && filtered.every((profile) => selected.has(profile.email))}
+                    onCheckedChange={toggleSelectAllVisible}
+                  />
+                </TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Status</TableHead>
                 {role === "owner" ? <TableHead>Added by</TableHead> : null}
@@ -289,13 +425,15 @@ export default function ClientsPage() {
                   key={profile.email}
                   profile={profile}
                   showAddedBy={role === "owner"}
+                  selected={selected.has(profile.email)}
+                  onToggleSelect={toggleSelect}
                   onClick={() => setSelectedEmail(profile.email)}
                 />
               ))}
               {!loading && filtered.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={role === "owner" ? 5 : 4}
+                    colSpan={role === "owner" ? 6 : 5}
                     className="py-10 text-center text-muted-foreground"
                   >
                     {profiles.length === 0
@@ -352,6 +490,20 @@ function StatTile({ filterKey, count, active, onClick }) {
       </div>
       <div className="text-2xl font-semibold tabular-nums">{count}</div>
     </button>
+  );
+}
+
+function MetricCard({ label, value, icon: Icon }) {
+  return (
+    <Card className="py-0">
+      <CardContent className="flex items-center gap-3 px-4 py-3">
+        <Icon className="size-4 text-muted-foreground" />
+        <div>
+          <div className="text-xs text-muted-foreground">{label}</div>
+          <div className="text-xl font-semibold tabular-nums">{value}</div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -419,13 +571,16 @@ function AddForm({ onSave }) {
   );
 }
 
-function ProfileRow({ profile, showAddedBy, onClick }) {
+function ProfileRow({ profile, showAddedBy, selected, onToggleSelect, onClick }) {
   const segmentKey = getSegmentKey(profile);
   const meta = SEGMENT_META[segmentKey];
   const SegmentIcon = meta.icon;
 
   return (
     <TableRow onClick={onClick} className="cursor-pointer">
+      <TableCell onClick={(event) => event.stopPropagation()}>
+        <Checkbox checked={selected} onCheckedChange={() => onToggleSelect(profile.email)} />
+      </TableCell>
       <TableCell className="font-medium">{profile.email}</TableCell>
       <TableCell>
         <div className="flex flex-col gap-1">

@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Check, Copy, KeyRound, Trash2, UserPlus } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Check, Copy, KeyRound, Trash2, Trophy, UserPlus } from "lucide-react";
 import { callRpc } from "@/lib/api";
 import { useAdminAuth } from "@/lib/admin-auth";
 import { createReseller, deleteReseller, resetResellerPassword } from "@/app/actions/resellers";
@@ -99,6 +99,11 @@ export default function ResellersPage() {
     }
   }
 
+  const rankedResellers = useMemo(
+    () => [...resellers].sort((a, b) => b.paid_count - a.paid_count),
+    [resellers]
+  );
+
   if (role !== "owner") {
     return (
       <div className="px-4 py-8 sm:px-8">
@@ -132,6 +137,7 @@ export default function ResellersPage() {
           <Table>
             <TableHeader className="[&_th]:h-11 [&_th]:text-xs [&_th]:font-medium [&_th]:tracking-wide [&_th]:text-muted-foreground [&_th]:uppercase">
               <TableRow>
+                <TableHead className="w-10">#</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Clients</TableHead>
@@ -142,8 +148,16 @@ export default function ResellersPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {resellers.map((reseller) => (
+              {rankedResellers.map((reseller, index) => (
                 <TableRow key={reseller.user_id}>
+                  <TableCell className="tabular-nums text-muted-foreground">
+                    <div className="flex items-center gap-1">
+                      {index === 0 && reseller.paid_count > 0 ? (
+                        <Trophy className="size-3.5" style={{ color: "#fab219" }} />
+                      ) : null}
+                      {index + 1}
+                    </div>
+                  </TableCell>
                   <TableCell className="font-medium">{reseller.email}</TableCell>
                   <TableCell className="text-muted-foreground">
                     {reseller.display_name || "—"}
@@ -182,7 +196,7 @@ export default function ResellersPage() {
               ))}
               {!loading && resellers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+                  <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
                     No resellers yet. Add one above.
                   </TableCell>
                 </TableRow>
