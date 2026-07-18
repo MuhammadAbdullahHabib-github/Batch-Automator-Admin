@@ -1,36 +1,23 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# Batch Automator
 
-## Getting Started
+Admin panel for granting trial and paid access to Batch Automator for ChatGPT users. Talks directly to the same Supabase project the extension uses (`admin_list_profiles` / `admin_add_or_update` RPCs) — no separate backend.
 
-First, run the development server:
+## Local development
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000). You'll need `.env.local` set (see `.env.example`) with the Supabase project URL and publishable/anon key — both are safe to expose client-side, access is actually gated by the admin password checked server-side inside the Supabase functions.
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+The admin password itself isn't stored here — it's hashed in the `admin_config` table in Supabase.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Deploying to Vercel
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Push this folder to its own GitHub repo (or `vercel --prod` directly from here with the Vercel CLI).
+2. Import the repo in Vercel.
+3. Add the two environment variables from `.env.example` in the Vercel project settings (Production + Preview):
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+4. Deploy. No other config needed — it's a static/client-rendered app with no server-side secrets.
