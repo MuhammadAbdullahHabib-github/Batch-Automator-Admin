@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, Copy, KeyRound, UserPlus } from "lucide-react";
+import { Check, Copy, KeyRound, Trash2, UserPlus } from "lucide-react";
 import { callRpc } from "@/lib/api";
 import { useAdminAuth } from "@/lib/admin-auth";
-import { createReseller, resetResellerPassword } from "@/app/actions/resellers";
+import { createReseller, deleteReseller, resetResellerPassword } from "@/app/actions/resellers";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -79,6 +79,26 @@ export default function ResellersPage() {
     }
   }
 
+  async function handleDeleteReseller(reseller) {
+    const clientNote =
+      reseller.client_count > 0
+        ? ` Their ${reseller.client_count} client(s) will be kept and marked as Direct.`
+        : "";
+    if (!window.confirm(`Delete reseller ${reseller.email}?${clientNote} This cannot be undone.`)) {
+      return;
+    }
+    try {
+      await deleteReseller({
+        accessToken: session.access_token,
+        userId: reseller.user_id,
+      });
+      setStatus(`Deleted reseller ${reseller.email}.`);
+      await loadResellers();
+    } catch (err) {
+      setStatus(`Failed to delete ${reseller.email}: ${err.message}`);
+    }
+  }
+
   if (role !== "owner") {
     return (
       <div className="px-4 py-8 sm:px-8">
@@ -139,14 +159,24 @@ export default function ResellersPage() {
                     })}
                   </TableCell>
                   <TableCell>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleResetPassword(reseller)}
-                    >
-                      <KeyRound className="size-3.5" />
-                      Reset password
-                    </Button>
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleResetPassword(reseller)}
+                      >
+                        <KeyRound className="size-3.5" />
+                        Reset password
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => handleDeleteReseller(reseller)}
+                      >
+                        <Trash2 className="size-3.5" />
+                        Delete
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}

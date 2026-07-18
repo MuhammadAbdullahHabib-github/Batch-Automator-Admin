@@ -76,3 +76,27 @@ export async function resetResellerPassword({ accessToken, userId }) {
 
   return { password: newPassword };
 }
+
+// Removes the reseller's login entirely. Their clients aren't touched — ownership is
+// cleared to null first so they fall back to "Direct" (same bucket as clients the owner
+// added themselves) instead of being deleted or orphaned against a foreign key.
+export async function deleteReseller({ accessToken, userId }) {
+  const client = adminClient();
+  await requireOwner(client, accessToken);
+
+  const { data: target } = await client
+    .from("app_users")
+    .select("role")
+    .eq("user_id", userId)
+    .single();
+  if (target?.role !== "reseller") throw new Error("Not a reseller account");
+
+  const { error: reassignError } = await client
+    .from("profiles")
+    .update({ owner_id: null })
+    .eq("owner_id", userId);
+  if (reassignError) throw new Error(reassignError.message);
+
+  const { error } = await client.auth.admin.deleteUser(userId);
+  if (error) throw new Error(error.message);
+}
