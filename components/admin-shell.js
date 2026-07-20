@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, CheckCircle2, KeyRound, LogOut, Settings, UserCog, Users, XCircle } from "lucide-react";
+import { Bell, CheckCircle2, KeyRound, LayoutDashboard, LogOut, Settings, UserCog, Users, XCircle } from "lucide-react";
 import { callRpc } from "@/lib/api";
 import { supabase } from "@/lib/supabase-client";
 import { useAdminAuth } from "@/lib/admin-auth";
@@ -36,7 +36,8 @@ import {
 // spot for a product switcher — the nav/page structure below doesn't assume there's
 // only ever one.
 const NAV_ITEMS = [
-  { href: "/", label: "Clients", icon: Users, ownerOnly: false },
+  { href: "/", label: "Dashboard", icon: LayoutDashboard, ownerOnly: false },
+  { href: "/clients", label: "Clients", icon: Users, ownerOnly: false },
   { href: "/resellers", label: "Resellers", icon: UserCog, ownerOnly: true },
   { href: "/settings", label: "Settings", icon: Settings, ownerOnly: true },
 ];
