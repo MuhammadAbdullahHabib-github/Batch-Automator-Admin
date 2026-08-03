@@ -46,6 +46,7 @@ export default function FlowAiPage() {
   const { role, session } = useAdminAuth();
   const [licenses, setLicenses] = useState(null); // null = not loaded yet
   const [status, setStatus] = useState("");
+  const [error, setError] = useState(false);
   const [loading, setLoading] = useState(false);
   const [busyKey, setBusyKey] = useState(""); // license key currently being mutated
   const [createdLicense, setCreatedLicense] = useState(null); // shown once after create
@@ -76,8 +77,10 @@ export default function FlowAiPage() {
     try {
       const data = await runAction("list", {});
       setLicenses((data.licenses ?? []).map(withComputedStatus));
+      setError(false);
     } catch (err) {
       setStatus(`Failed to load licenses: ${err.message}`);
+      setError(true);
     } finally {
       setLoading(false);
     }
@@ -220,22 +223,28 @@ export default function FlowAiPage() {
   }
 
   return (
-    <div className="px-4 py-8 sm:px-8">
+    <div className="px-4 py-6 sm:px-8">
       <div className="mx-auto max-w-6xl">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Flow AI</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Manual licenses for Flow AI customers (JazzCash, EasyPaisa, bank transfer). Keys are
-              stored in the Flow AI Worker — changes apply to extensions within ~5 minutes.
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-baseline gap-3 min-w-0">
+            <h1 className="text-xl font-semibold tracking-tight whitespace-nowrap">Flow AI</h1>
+            <p className="hidden text-xs text-muted-foreground sm:block truncate">
+              Manual licenses (JazzCash, EasyPaisa, bank transfer) — changes reach extensions in ~5 min
             </p>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setLookupOpen(true)}>
+          <div className="flex items-center gap-2 shrink-0">
+            <span
+              className={`inline-block size-2 rounded-full transition-colors ${
+                loading ? "animate-pulse bg-amber-500" : error ? "bg-red-500" : "bg-green-500"
+              }`}
+              title={loading ? "Syncing…" : error ? "Connection error" : "Connected to Flow AI Worker"}
+            />
+            <Button variant="outline" size="sm" onClick={() => setLookupOpen(true)}>
               <Search className="size-3.5" />
               Lookup
             </Button>
-            <Button variant="outline" onClick={loadLicenses} disabled={loading}>
+            <Button variant="outline" size="sm" onClick={loadLicenses} disabled={loading}>
+              <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
               Refresh
             </Button>
           </div>
@@ -243,7 +252,7 @@ export default function FlowAiPage() {
 
         <CreateLicenseForm onCreate={handleCreate} />
 
-        <Card className="mt-6 py-0">
+        <Card className="mt-4 py-0">
           <Table>
             <TableHeader className="[&_th]:h-11 [&_th]:text-xs [&_th]:font-medium [&_th]:tracking-wide [&_th]:text-muted-foreground [&_th]:uppercase">
               <TableRow>
@@ -260,7 +269,11 @@ export default function FlowAiPage() {
                   className="cursor-pointer"
                   onClick={() => setDetailKey(license.licenseKey)}
                 >
-                  <TableCell className="font-medium">{license.customerEmail}</TableCell>
+                  <TableCell className="max-w-0 font-medium">
+                    <span className="block truncate" title={license.customerEmail}>
+                      {license.customerEmail}
+                    </span>
+                  </TableCell>
                   <TableCell>
                     <StatusBadge license={license} />
                   </TableCell>
