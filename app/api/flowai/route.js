@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 const DEFAULT_BACKEND_URL = "https://flow-ai-backend.abdullah-mohammad2019274.workers.dev";
-const ACTIONS = new Set(["list", "lookup", "create", "extend", "revoke", "reset"]);
+const ACTIONS = new Set(["list", "lookup", "create", "extend", "revoke", "reset", "delete"]);
 
 function backendUrl() {
   return (process.env.FLOWAI_BACKEND_URL || DEFAULT_BACKEND_URL).replace(/\/+$/, "");

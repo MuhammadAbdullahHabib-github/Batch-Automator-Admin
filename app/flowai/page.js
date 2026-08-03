@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Check, Copy, MessageCircle, PlusCircle, RefreshCw, Search, ShieldOff } from "lucide-react";
+import { Check, Copy, MessageCircle, PlusCircle, RefreshCw, Search, ShieldOff, Trash2 } from "lucide-react";
 import { useAdminAuth } from "@/lib/admin-auth";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -162,6 +162,26 @@ export default function FlowAiPage() {
     }
   }
 
+  async function handleDelete(license) {
+    if (
+      !window.confirm(
+        `Permanently delete the license for ${license.customerEmail}? The record is erased entirely — use Revoke instead if you want to keep a history. This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+    setBusyKey(license.licenseKey);
+    try {
+      await runAction("delete", { licenseKey: license.licenseKey });
+      setStatus(`Deleted ${license.customerEmail}.`);
+      await loadLicenses();
+    } catch (err) {
+      setStatus(`Failed to delete ${license.customerEmail}: ${err.message}`);
+    } finally {
+      setBusyKey("");
+    }
+  }
+
   async function handleLookup(subject) {
     const payload = subject.includes("@") ? { customerEmail: subject } : { licenseKey: subject };
     return withComputedStatus(await runAction("lookup", payload));
@@ -297,6 +317,15 @@ export default function FlowAiPage() {
                         >
                           <ShieldOff className="size-3.5" />
                           Revoke
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => handleDelete(license)}
+                        >
+                          <Trash2 className="size-3.5" />
+                          Delete
                         </Button>
                       </div>
                     </TableCell>
