@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Check, Copy, PlusCircle, RefreshCw, Search, ShieldOff } from "lucide-react";
+import { Check, Copy, MessageCircle, PlusCircle, RefreshCw, Search, ShieldOff } from "lucide-react";
 import { useAdminAuth } from "@/lib/admin-auth";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,20 @@ import {
 // page calls /api/flowai (a Route Handler), which proxies to the Worker with the
 // admin token held server-side. Successor to the standalone admin-portal app in
 // the Flow AI repo.
+
+// Trial presets mirror the Clients page pattern — a trial is simply a
+// short-duration license (the Worker only knows durations, not trial types).
+const TRIAL_PRESETS = [
+  { label: "1 day", days: 1 },
+  { label: "3 days", days: 3, recommended: true },
+  { label: "7 days", days: 7 },
+];
+
+// wa.me only accepts digits — strip spaces, dashes, and the leading +.
+function waMeLink(whatsapp) {
+  return `https://wa.me/${String(whatsapp).replace(/\D/g, "")}`;
+}
+
 export default function FlowAiPage() {
   const { role, session } = useAdminAuth();
   const [licenses, setLicenses] = useState(null); // null = not loaded yet
@@ -82,6 +96,7 @@ export default function FlowAiPage() {
         licenseKey: data.licenseKey,
         customerEmail: data.customerEmail,
         expiresAt: data.expiresAt,
+        whatsapp: data.whatsapp,
       });
       setStatus(`Created license for ${data.customerEmail}.`);
       await loadLicenses();
@@ -90,13 +105,14 @@ export default function FlowAiPage() {
     }
   }
 
-  async function handleExtend({ months, days, note }) {
+  async function handleExtend({ months, days, note, whatsapp }) {
     try {
       const data = await runAction("extend", {
         licenseKey: extendTarget.licenseKey,
         months,
         days,
         note,
+        whatsapp,
       });
       setStatus(`Extended ${data.customerEmail} — new expiry ${formatDate(data.expiresAt)}.`);
       setExtendTarget(null);
@@ -195,6 +211,7 @@ export default function FlowAiPage() {
             <TableHeader className="[&_th]:h-11 [&_th]:text-xs [&_th]:font-medium [&_th]:tracking-wide [&_th]:text-muted-foreground [&_th]:uppercase">
               <TableRow>
                 <TableHead>Customer</TableHead>
+                <TableHead>WhatsApp</TableHead>
                 <TableHead>License key</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Expires</TableHead>
@@ -209,6 +226,28 @@ export default function FlowAiPage() {
                 return (
                   <TableRow key={license.licenseKey}>
                     <TableCell className="font-medium">{license.customerEmail}</TableCell>
+                    <TableCell>
+                      {license.whatsapp ? (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-6"
+                          nativeButton={false}
+                          render={
+                            <a
+                              href={waMeLink(license.whatsapp)}
+                              target="_blank"
+                              rel="noreferrer"
+                              title={`Chat on WhatsApp: ${license.whatsapp}`}
+                            />
+                          }
+                        >
+                          <MessageCircle style={{ color: "#0ca30c" }} />
+                        </Button>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1.5">
                         <code className="text-xs text-muted-foreground">{license.licenseKey}</code>
@@ -266,14 +305,14 @@ export default function FlowAiPage() {
               })}
               {licenses !== null && sortedLicenses.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+                  <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
                     No licenses yet. Create one above.
                   </TableCell>
                 </TableRow>
               ) : null}
               {licenses === null ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+                  <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
                     Loading…
                   </TableCell>
                 </TableRow>
@@ -350,10 +389,17 @@ function formatDate(iso) {
 
 function CreateLicenseForm({ onCreate }) {
   const [email, setEmail] = useState("");
+  const [whatsapp, setWhatsapp] = useState("");
   const [amount, setAmount] = useState("1");
   const [unit, setUnit] = useState("months");
   const [note, setNote] = useState("");
   const [creating, setCreating] = useState(false);
+
+  function applyTrialPreset(days) {
+    setUnit("days");
+    setAmount(String(days));
+    setNote((current) => current || "Trial");
+  }
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -362,12 +408,14 @@ function CreateLicenseForm({ onCreate }) {
       const parsed = Number(amount);
       const payload = {
         customerEmail: email.trim(),
+        whatsapp: whatsapp.trim(),
         note: note.trim(),
       };
       if (unit === "months") payload.months = parsed;
       else payload.days = parsed;
       await onCreate(payload);
       setEmail("");
+      setWhatsapp("");
       setAmount("1");
       setUnit("months");
       setNote("");
@@ -381,7 +429,7 @@ function CreateLicenseForm({ onCreate }) {
       <CardContent>
         <form
           onSubmit={handleSubmit}
-          className="grid grid-cols-1 items-end gap-4 sm:grid-cols-2 lg:grid-cols-[1.4fr_0.5fr_0.7fr_1fr_auto]"
+          className="grid grid-cols-1 items-end gap-4 sm:grid-cols-2 lg:grid-cols-[1.3fr_1fr_0.5fr_0.7fr_1fr_auto]"
         >
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="flowai-email">Customer email</Label>
@@ -392,6 +440,16 @@ function CreateLicenseForm({ onCreate }) {
               placeholder="customer@example.com"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="flowai-whatsapp">WhatsApp</Label>
+            <Input
+              id="flowai-whatsapp"
+              type="tel"
+              placeholder="+92 300 1234567"
+              value={whatsapp}
+              onChange={(event) => setWhatsapp(event.target.value)}
             />
           </div>
           <div className="flex flex-col gap-1.5">
@@ -433,6 +491,21 @@ function CreateLicenseForm({ onCreate }) {
             Create
           </Button>
         </form>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <span className="text-xs text-muted-foreground">Trial:</span>
+          {TRIAL_PRESETS.map((preset) => (
+            <Button
+              key={preset.days}
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => applyTrialPreset(preset.days)}
+            >
+              {preset.label}
+              {preset.recommended ? " ★" : ""}
+            </Button>
+          ))}
+        </div>
         <p className="mt-2 text-xs text-muted-foreground">
           One license per email — if the customer already has one, extend it from the table below.
         </p>
@@ -478,14 +551,47 @@ function CreatedLicenseContent({ license }) {
           {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
         </Button>
       </div>
+      {license.whatsapp ? (
+        <Button
+          variant="outline"
+          nativeButton={false}
+          render={
+            <a
+              href={`${waMeLink(license.whatsapp)}?text=${encodeURIComponent(
+                `Your Flow AI Pro license key: ${license.licenseKey}`
+              )}`}
+              target="_blank"
+              rel="noreferrer"
+            />
+          }
+        >
+          <MessageCircle style={{ color: "#0ca30c" }} />
+          Send key on WhatsApp
+        </Button>
+      ) : null}
     </>
   );
 }
 
 function ExtendDialog({ license, onOpenChange, onExtend }) {
+  return (
+    <Dialog open={Boolean(license)} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-sm">
+        {license ? (
+          <ExtendDialogContent key={license.licenseKey} license={license} onExtend={onExtend} />
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Keyed by licenseKey above so form state initializes per-license (WhatsApp
+// pre-fill) and never leaks from a previously edited license.
+function ExtendDialogContent({ license, onExtend }) {
   const [amount, setAmount] = useState("1");
   const [unit, setUnit] = useState("months");
   const [note, setNote] = useState("");
+  const [whatsapp, setWhatsapp] = useState(license.whatsapp ?? "");
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(event) {
@@ -497,60 +603,58 @@ function ExtendDialog({ license, onOpenChange, onExtend }) {
         months: unit === "months" ? parsed : undefined,
         days: unit === "days" ? parsed : undefined,
         note: note.trim(),
+        whatsapp: whatsapp.trim(),
       });
-      setAmount("1");
-      setUnit("months");
-      setNote("");
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <Dialog open={Boolean(license)} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-sm">
-        {license ? (
-          <>
-            <DialogHeader>
-              <DialogTitle>Extend {license.customerEmail}</DialogTitle>
-              <DialogDescription>
-                Current expiry {formatDate(license.expiresAt)} — the extension adds on top of it
-                (or from today if already expired).
-              </DialogDescription>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="flex flex-col gap-2">
-              <div className="grid grid-cols-2 gap-2">
-                <Input
-                  type="number"
-                  required
-                  min={1}
-                  max={unit === "months" ? 24 : 365}
-                  value={amount}
-                  onChange={(event) => setAmount(event.target.value)}
-                />
-                <select
-                  value={unit}
-                  onChange={(event) => setUnit(event.target.value)}
-                  className="flex h-8 w-full items-center rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
-                >
-                  <option value="months">Months</option>
-                  <option value="days">Days</option>
-                </select>
-              </div>
-              <Input
-                type="text"
-                placeholder="Note (optional — replaces existing)"
-                value={note}
-                onChange={(event) => setNote(event.target.value)}
-              />
-              <Button type="submit" disabled={submitting}>
-                Extend license
-              </Button>
-            </form>
-          </>
-        ) : null}
-      </DialogContent>
-    </Dialog>
+    <>
+      <DialogHeader>
+        <DialogTitle>Extend {license.customerEmail}</DialogTitle>
+        <DialogDescription>
+          Current expiry {formatDate(license.expiresAt)} — the extension adds on top of it (or
+          from today if already expired).
+        </DialogDescription>
+      </DialogHeader>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-2">
+        <div className="grid grid-cols-2 gap-2">
+          <Input
+            type="number"
+            required
+            min={1}
+            max={unit === "months" ? 24 : 365}
+            value={amount}
+            onChange={(event) => setAmount(event.target.value)}
+          />
+          <select
+            value={unit}
+            onChange={(event) => setUnit(event.target.value)}
+            className="flex h-8 w-full items-center rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+          >
+            <option value="months">Months</option>
+            <option value="days">Days</option>
+          </select>
+        </div>
+        <Input
+          type="text"
+          placeholder="Note (optional — replaces existing)"
+          value={note}
+          onChange={(event) => setNote(event.target.value)}
+        />
+        <Input
+          type="tel"
+          placeholder="WhatsApp (optional — replaces existing)"
+          value={whatsapp}
+          onChange={(event) => setWhatsapp(event.target.value)}
+        />
+        <Button type="submit" disabled={submitting}>
+          Extend license
+        </Button>
+      </form>
+    </>
   );
 }
 
@@ -599,6 +703,21 @@ function LookupDialog({ open, onOpenChange, onLookup }) {
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 rounded-lg border border-border p-3 text-sm">
             <dt className="text-muted-foreground">Customer</dt>
             <dd className="font-medium">{result.customerEmail}</dd>
+            <dt className="text-muted-foreground">WhatsApp</dt>
+            <dd>
+              {result.whatsapp ? (
+                <a
+                  href={waMeLink(result.whatsapp)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline underline-offset-2"
+                >
+                  {result.whatsapp}
+                </a>
+              ) : (
+                "—"
+              )}
+            </dd>
             <dt className="text-muted-foreground">Key</dt>
             <dd className="flex items-center gap-1.5 font-mono text-xs">
               {result.licenseKey}

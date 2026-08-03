@@ -83,6 +83,9 @@ export async function POST(request) {
   if (typeof payload.months === "number") forward.months = payload.months;
   if (typeof payload.days === "number") forward.days = payload.days;
   if (typeof payload.note === "string" && payload.note.trim()) forward.note = payload.note.trim();
+  if (typeof payload.whatsapp === "string" && payload.whatsapp.trim()) {
+    forward.whatsapp = payload.whatsapp.trim();
+  }
 
   let response;
   try {
