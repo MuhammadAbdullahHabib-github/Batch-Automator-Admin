@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 const DEFAULT_BACKEND_URL = "https://flow-ai-backend.abdullah-mohammad2019274.workers.dev";
-const ACTIONS = new Set(["list", "lookup", "create", "extend", "revoke", "reset", "delete"]);
+const ACTIONS = new Set(["list", "lookup", "create", "extend", "revoke", "reset", "delete", "update"]);
 
 function backendUrl() {
   return (process.env.FLOWAI_BACKEND_URL || DEFAULT_BACKEND_URL).replace(/\/+$/, "");
@@ -85,6 +85,11 @@ export async function POST(request) {
   const forward = {};
   if (typeof payload.customerEmail === "string" && payload.customerEmail.trim()) {
     forward.customerEmail = payload.customerEmail.trim();
+  }
+  // "update" allows clearing fields via explicit empty strings — pass through.
+  if (action === "update") {
+    if (typeof payload.whatsapp === "string") forward.whatsapp = payload.whatsapp;
+    if (typeof payload.note === "string") forward.note = payload.note;
   }
   if (typeof payload.licenseKey === "string" && payload.licenseKey.trim()) {
     forward.licenseKey = payload.licenseKey.trim();

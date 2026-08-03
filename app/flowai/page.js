@@ -50,6 +50,7 @@ export default function FlowAiPage() {
   const [busyKey, setBusyKey] = useState(""); // license key currently being mutated
   const [createdLicense, setCreatedLicense] = useState(null); // shown once after create
   const [extendTarget, setExtendTarget] = useState(null);
+  const [detailKey, setDetailKey] = useState(null); // license key shown in the detail modal
   const [lookupOpen, setLookupOpen] = useState(false);
 
   const accessToken = session?.access_token;
@@ -182,12 +183,28 @@ export default function FlowAiPage() {
     }
   }
 
+  async function handleUpdate(licenseKey, { customerEmail, whatsapp, note }) {
+    setBusyKey(licenseKey);
+    try {
+      await runAction("update", { licenseKey, customerEmail, whatsapp, note });
+      setStatus("Saved changes.");
+      await loadLicenses();
+    } catch (err) {
+      setStatus(`Failed to save: ${err.message}`);
+    } finally {
+      setBusyKey("");
+    }
+  }
+
   async function handleLookup(subject) {
     const payload = subject.includes("@") ? { customerEmail: subject } : { licenseKey: subject };
     return withComputedStatus(await runAction("lookup", payload));
   }
 
   const sortedLicenses = useMemo(() => licenses ?? [], [licenses]);
+  const detailLicense = detailKey
+    ? sortedLicenses.find((license) => license.licenseKey === detailKey) ?? null
+    : null;
 
   if (role !== "owner") {
     return (
@@ -231,117 +248,58 @@ export default function FlowAiPage() {
             <TableHeader className="[&_th]:h-11 [&_th]:text-xs [&_th]:font-medium [&_th]:tracking-wide [&_th]:text-muted-foreground [&_th]:uppercase">
               <TableRow>
                 <TableHead>Customer</TableHead>
-                <TableHead>WhatsApp</TableHead>
-                <TableHead>License key</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Expires</TableHead>
-                <TableHead>Activated</TableHead>
-                <TableHead>Note</TableHead>
-                <TableHead />
+                <TableHead className="w-10" />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sortedLicenses.map((license) => {
-                const busy = busyKey === license.licenseKey;
-                return (
-                  <TableRow key={license.licenseKey}>
-                    <TableCell className="font-medium">{license.customerEmail}</TableCell>
-                    <TableCell>
-                      {license.whatsapp ? (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-6"
-                          nativeButton={false}
-                          render={
-                            <a
-                              href={waMeLink(license.whatsapp)}
-                              target="_blank"
-                              rel="noreferrer"
-                              title={`Chat on WhatsApp: ${license.whatsapp}`}
-                            />
-                          }
-                        >
-                          <MessageCircle style={{ color: "#0ca30c" }} />
-                        </Button>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1.5">
-                        <code className="text-xs text-muted-foreground">{license.licenseKey}</code>
-                        <CopyButton text={license.licenseKey} />
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge license={license} />
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {formatDate(license.expiresAt)}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {license.instanceName || formatDate(license.activatedAt)}
-                    </TableCell>
-                    <TableCell
-                      className="max-w-48 truncate text-muted-foreground"
-                      title={license.note || ""}
-                    >
-                      {license.note || "—"}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={busy || license.status !== "active"}
-                          onClick={() => setExtendTarget(license)}
-                        >
-                          <PlusCircle className="size-3.5" />
-                          Extend
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={busy || !license.activatedAt}
-                          onClick={() => handleReset(license)}
-                        >
-                          <RefreshCw className="size-3.5" />
-                          Reset
-                        </Button>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          disabled={busy || license.status !== "active"}
-                          onClick={() => handleRevoke(license)}
-                        >
-                          <ShieldOff className="size-3.5" />
-                          Revoke
-                        </Button>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          disabled={busy}
-                          onClick={() => handleDelete(license)}
-                        >
-                          <Trash2 className="size-3.5" />
-                          Delete
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
+              {sortedLicenses.map((license) => (
+                <TableRow
+                  key={license.licenseKey}
+                  className="cursor-pointer"
+                  onClick={() => setDetailKey(license.licenseKey)}
+                >
+                  <TableCell className="font-medium">{license.customerEmail}</TableCell>
+                  <TableCell>
+                    <StatusBadge license={license} />
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {formatDate(license.expiresAt)}
+                  </TableCell>
+                  <TableCell>
+                    {license.whatsapp ? (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-6"
+                        nativeButton={false}
+                        render={
+                          <a
+                            href={waMeLink(license.whatsapp)}
+                            target="_blank"
+                            rel="noreferrer"
+                            title={`Chat on WhatsApp: ${license.whatsapp}`}
+                            onClick={(event) => event.stopPropagation()}
+                          />
+                        }
+                      >
+                        <MessageCircle style={{ color: "#0ca30c" }} />
+                      </Button>
+                    ) : null}
+                  </TableCell>
+                </TableRow>
+              ))}
               {licenses !== null && sortedLicenses.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
+                  <TableCell colSpan={4} className="py-10 text-center text-muted-foreground">
                     No licenses yet. Create one above.
                   </TableCell>
                 </TableRow>
               ) : null}
               {licenses === null ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
+                  <TableCell colSpan={4} className="py-10 text-center text-muted-foreground">
                     Loading…
                   </TableCell>
                 </TableRow>
@@ -365,6 +323,18 @@ export default function FlowAiPage() {
           if (!open) setExtendTarget(null);
         }}
         onExtend={handleExtend}
+      />
+      <LicenseDetailDialog
+        license={detailLicense}
+        busy={Boolean(detailKey) && busyKey === detailKey}
+        onOpenChange={(open) => {
+          if (!open) setDetailKey(null);
+        }}
+        onUpdate={handleUpdate}
+        onExtend={(license) => setExtendTarget(license)}
+        onReset={handleReset}
+        onRevoke={handleRevoke}
+        onDelete={handleDelete}
       />
       <LookupDialog open={lookupOpen} onOpenChange={setLookupOpen} onLookup={handleLookup} />
     </div>
@@ -598,6 +568,166 @@ function CreatedLicenseContent({ license }) {
           Send key on WhatsApp
         </Button>
       ) : null}
+    </>
+  );
+}
+
+// Clients-page-style detail modal: the table stays narrow (email/status/expiry),
+// and everything else — key, editable email/WhatsApp/note, activation info, and
+// all actions — lives here, opened by clicking a row.
+function LicenseDetailDialog({
+  license,
+  busy,
+  onOpenChange,
+  onUpdate,
+  onExtend,
+  onReset,
+  onRevoke,
+  onDelete,
+}) {
+  return (
+    <Dialog open={Boolean(license)} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        {license ? (
+          <LicenseDetailContent
+            key={`${license.licenseKey}:${license.customerEmail}:${license.whatsapp ?? ""}:${license.note ?? ""}`}
+            license={license}
+            busy={busy}
+            onUpdate={onUpdate}
+            onExtend={onExtend}
+            onReset={onReset}
+            onRevoke={onRevoke}
+            onDelete={onDelete}
+          />
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Keyed above so edits from a successful save reset the form to server truth,
+// mirroring the Clients detail dialog pattern.
+function LicenseDetailContent({ license, busy, onUpdate, onExtend, onReset, onRevoke, onDelete }) {
+  const [email, setEmail] = useState(license.customerEmail);
+  const [whatsapp, setWhatsapp] = useState(license.whatsapp ?? "");
+  const [note, setNote] = useState(license.note ?? "");
+
+  function save() {
+    onUpdate(license.licenseKey, {
+      customerEmail: email.trim(),
+      whatsapp: whatsapp.trim(),
+      note: note.trim(),
+    });
+  }
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2">
+          {license.customerEmail}
+          <StatusBadge license={license} />
+        </DialogTitle>
+        <DialogDescription>
+          Created {formatDate(license.createdAt)} · Expires {formatDate(license.expiresAt)}
+          {license.instanceName ? ` · Activated on ${license.instanceName}` : ""}
+        </DialogDescription>
+      </DialogHeader>
+
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center gap-2">
+          <Input readOnly value={license.licenseKey} className="font-mono text-xs" />
+          <CopyButton text={license.licenseKey} />
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="detail-email">Customer email</Label>
+          <Input
+            id="detail-email"
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            onBlur={() => {
+              if (email.trim() && email.trim() !== license.customerEmail) save();
+            }}
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="detail-whatsapp">WhatsApp</Label>
+          <div className="flex items-center gap-2">
+            <Input
+              id="detail-whatsapp"
+              type="tel"
+              placeholder="+92 300 1234567"
+              value={whatsapp}
+              onChange={(event) => setWhatsapp(event.target.value)}
+              onBlur={() => {
+                if (whatsapp.trim() !== (license.whatsapp ?? "")) save();
+              }}
+            />
+            {whatsapp.trim() ? (
+              <Button
+                variant="ghost"
+                size="icon"
+                nativeButton={false}
+                render={
+                  <a href={waMeLink(whatsapp)} target="_blank" rel="noreferrer" />
+                }
+              >
+                <MessageCircle style={{ color: "#0ca30c" }} />
+              </Button>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="detail-note">Note</Label>
+          <Input
+            id="detail-note"
+            type="text"
+            placeholder="e.g. JazzCash receipt #123"
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            onBlur={() => {
+              if (note.trim() !== (license.note ?? "")) save();
+            }}
+          />
+        </div>
+
+        <div className="flex flex-wrap gap-2 border-t pt-4">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={busy || license.status !== "active"}
+            onClick={() => onExtend(license)}
+          >
+            <PlusCircle className="size-3.5" />
+            Extend
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={busy || !license.activatedAt}
+            onClick={() => onReset(license)}
+          >
+            <RefreshCw className="size-3.5" />
+            Reset
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            disabled={busy || license.status !== "active"}
+            onClick={() => onRevoke(license)}
+          >
+            <ShieldOff className="size-3.5" />
+            Revoke
+          </Button>
+          <Button variant="destructive" size="sm" disabled={busy} onClick={() => onDelete(license)}>
+            <Trash2 className="size-3.5" />
+            Delete
+          </Button>
+        </div>
+      </div>
     </>
   );
 }
