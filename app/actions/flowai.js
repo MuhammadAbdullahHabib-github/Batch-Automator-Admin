@@ -13,6 +13,8 @@ function backendUrl() {
 }
 
 function adminToken() {
+  // Same secret as MANUAL_LICENSE_ADMIN_TOKEN on the Flow AI Worker — if you
+  // rotate it there, rotate it here too (Vercel env) or all calls start 401ing.
   const token = process.env.FLOWAI_ADMIN_TOKEN;
   if (!token) throw new Error("FLOWAI_ADMIN_TOKEN is not configured");
   return token;
