@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Check, Copy, MessageCircle, PlusCircle, RefreshCw, Search, ShieldOff, Trash2 } from "lucide-react";
+import { Check, Copy, MessageCircle, MessageSquare, PlusCircle, RefreshCw, Search, ShieldOff, Trash2 } from "lucide-react";
 import { useAdminAuth } from "@/lib/admin-auth";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -637,6 +637,16 @@ function LicenseDetailContent({ license, busy, onUpdate, onExtend, onReset, onRe
         <div className="flex items-center gap-2">
           <Input readOnly value={license.licenseKey} className="font-mono text-xs" />
           <CopyButton text={license.licenseKey} />
+        </div>
+
+        <div className="flex gap-2 text-sm">
+          <div className="flex flex-col items-center gap-1 rounded-lg border p-2">
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              <MessageSquare className="size-3" />
+              Prompts used
+            </span>
+            <span className="tabular-nums font-medium">{license.promptsUsed ?? 0}</span>
+          </div>
         </div>
 
         <div className="flex flex-col gap-1.5">
