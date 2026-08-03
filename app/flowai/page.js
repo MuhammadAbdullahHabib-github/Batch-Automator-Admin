@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, Copy, PlusCircle, RefreshCw, Search, ShieldOff } from "lucide-react";
 import { useAdminAuth } from "@/lib/admin-auth";
-import { runFlowAiLicenseAction } from "@/app/actions/flowai";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,9 +24,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-// Flow AI licenses live in the Flow AI Cloudflare Worker (KV), not Supabase — the
-// runFlowAiLicenseAction Server Function proxies to it with the admin token held
-// server-side. This page is the successor to the standalone admin-portal app in
+// Flow AI licenses live in the Flow AI Cloudflare Worker (KV), not Supabase — this
+// page calls /api/flowai (a Route Handler), which proxies to the Worker with the
+// admin token held server-side. Successor to the standalone admin-portal app in
 // the Flow AI repo.
 export default function FlowAiPage() {
   const { role, session } = useAdminAuth();
@@ -42,14 +41,26 @@ export default function FlowAiPage() {
   const accessToken = session?.access_token;
 
   async function runAction(action, payload) {
-    return runFlowAiLicenseAction({ accessToken, action, payload });
+    const response = await fetch("/api/flowai", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ action, payload }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data?.error || `Request failed (${response.status})`);
+    }
+    return data;
   }
 
   async function loadLicenses() {
     setLoading(true);
     try {
       const data = await runAction("list", {});
-      setLicenses(data.licenses ?? []);
+      setLicenses((data.licenses ?? []).map(withComputedStatus));
     } catch (err) {
       setStatus(`Failed to load licenses: ${err.message}`);
     } finally {
@@ -59,7 +70,7 @@ export default function FlowAiPage() {
 
   useEffect(() => {
     if (role !== "owner" || !accessToken) return;
-     
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadLicenses();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role, accessToken]);
@@ -137,12 +148,24 @@ export default function FlowAiPage() {
 
   async function handleLookup(subject) {
     const payload = subject.includes("@") ? { customerEmail: subject } : { licenseKey: subject };
-    return runAction("lookup", payload);
+    return withComputedStatus(await runAction("lookup", payload));
   }
 
   const sortedLicenses = useMemo(() => licenses ?? [], [licenses]);
 
   if (role !== "owner") {
+    return (
+      <div className="px-4 py-8 sm:px-8">
+        <div className="mx-auto max-w-6xl">
+          <h1 className="text-2xl font-semibold tracking-tight">Flow AI</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Flow AI license management is restricted to owners.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="px-4 py-8 sm:px-8">
       <div className="mx-auto max-w-6xl">
@@ -280,11 +303,21 @@ export default function FlowAiPage() {
   );
 }
 
+// Expiry must be computed outside render (Date.now() is impure there) — handlers
+// stamp each record with isExpired when it arrives from the Worker.
+function withComputedStatus(license) {
+  const isExpired =
+    license?.status === "active" &&
+    Boolean(license?.expiresAt) &&
+    Date.parse(license.expiresAt) <= Date.now();
+  return { ...license, isExpired };
+}
+
 function StatusBadge({ license }) {
   if (license.status !== "active") {
     return <Badge variant="destructive">Revoked</Badge>;
   }
-  if (license.expiresAt && Date.parse(license.expiresAt) <= Date.now()) {
+  if (license.isExpired) {
     return <Badge variant="outline">Expired</Badge>;
   }
   return <Badge variant="secondary">Active</Badge>;
@@ -589,4 +622,3 @@ function LookupDialog({ open, onOpenChange, onLookup }) {
     </Dialog>
   );
 }
-  }
