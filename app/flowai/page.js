@@ -570,7 +570,7 @@ function CreatedLicenseContent({ license }) {
           render={
             <a
               href={`${waMeLink(license.whatsapp)}?text=${encodeURIComponent(
-                `Your Flow AI Pro license key: ${license.licenseKey}`
+                `Your Flow AI Pro license key:\n${license.licenseKey}`
               )}`}
               target="_blank"
               rel="noreferrer"
