@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, CheckCircle2, KeyRound, LayoutDashboard, LogOut, Settings, UserCog, Users, XCircle } from "lucide-react";
+import { Bell, CheckCircle2, KeyRound, LayoutDashboard, LogOut, Settings, Sparkles, UserCog, Users, XCircle } from "lucide-react";
 import { callRpc } from "@/lib/api";
 import { supabase } from "@/lib/supabase-client";
 import { useAdminAuth } from "@/lib/admin-auth";
@@ -32,13 +32,13 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 
-// One product (Batch Automator) today. When a second extension is added, this is the
-// spot for a product switcher — the nav/page structure below doesn't assume there's
-// only ever one.
+// One nav for every product. Batch Automator data comes from Supabase; Flow AI
+// licenses live in the Flow AI Cloudflare Worker and are owner-only.
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, ownerOnly: false },
   { href: "/clients", label: "Clients", icon: Users, ownerOnly: false },
   { href: "/resellers", label: "Resellers", icon: UserCog, ownerOnly: true },
+  { href: "/flowai", label: "Flow AI", icon: Sparkles, ownerOnly: true },
   { href: "/settings", label: "Settings", icon: Settings, ownerOnly: true },
 ];
 
