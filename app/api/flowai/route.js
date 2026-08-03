@@ -16,6 +16,20 @@ function adminToken() {
   return token;
 }
 
+// Server-only: uses the service-role key, which must never reach the browser.
+// The role lookup MUST go through this client (not the anon key): app_users is
+// RLS-protected, and auth.getUser(accessToken) validates the token without
+// attaching the caller's JWT to subsequent PostgREST queries — so an anon-key
+// lookup reads as anonymous, gets zero rows, and every call 401s. Same pattern
+// as app/actions/resellers.js, which uses the service role for the same check.
+function adminClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  );
+}
+
 // This route is reachable directly (not just through the UI), so re-verify the
 // caller's identity and role here even though the Flow AI page is owner-only.
 // The browser sends its Supabase access token as a Bearer token; the Worker's
@@ -25,12 +39,7 @@ async function requireOwner(request) {
   const accessToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
   if (!accessToken) return null;
 
-  const client = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  );
-
+  const client = adminClient();
   const {
     data: { user },
     error,
